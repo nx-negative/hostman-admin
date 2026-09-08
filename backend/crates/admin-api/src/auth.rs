@@ -123,6 +123,7 @@ pub async fn login(
             admin.id,
             role_str(admin.role.clone()),
             "temp",
+            None,
             TEMP_TTL,
         ) {
             Ok(t) => ok(json!({"state": "totp_required", "temp_token": t})),
@@ -150,6 +151,7 @@ pub async fn login(
             admin.id,
             role_str(admin.role.clone()),
             "temp",
+            None,
             TEMP_TTL,
         ) {
             Ok(t) => ok(json!({"state": "totp_enroll", "temp_token": t, "otpauth_url": url})),
@@ -287,7 +289,7 @@ pub async fn totp_verify(
     )
     .await;
 
-    match issue_session(&st, db, &admin).await {
+    match issue_session(&st, db, &admin, true).await {
         Ok((access, refresh)) => session_response(&admin, access, refresh, recovery_codes),
         Err(e) => e.into_response(),
     }
@@ -310,22 +312,19 @@ pub fn admin_out(a: &admin_user::Model) -> AdminOut {
     }
 }
 
+/// Create a session row + access/refresh pair. `revoke_others` (true on fresh login) kills all
+/// other sessions for the admin → single-active-session ("one device at a time", §7.4).
 async fn issue_session(
     st: &AppState,
     db: &sea_orm::DatabaseConnection,
     admin: &admin_user::Model,
+    revoke_others: bool,
 ) -> Result<(String, String), ApiError> {
-    let access = issue_jwt(
-        st,
-        admin.id,
-        role_str(admin.role.clone()),
-        "access",
-        ACCESS_TTL,
-    )?;
+    let sid = Uuid::now_v7();
     let refresh = gen_token();
     let now = time::OffsetDateTime::now_utc();
     let row = admin_session::ActiveModel {
-        id: Set(Uuid::now_v7()),
+        id: Set(sid),
         admin_user_id: Set(admin.id),
         refresh_hash: Set(sha256_hex(&refresh)),
         expires_at: Set(now + REFRESH_TTL),
@@ -337,6 +336,27 @@ async fn issue_session(
         .exec(db)
         .await
         .map_err(|e| ApiError::internal(e.to_string()))?;
+    if revoke_others {
+        admin_session::Entity::update_many()
+            .set(admin_session::ActiveModel {
+                revoked_at: Set(Some(now)),
+                ..Default::default()
+            })
+            .filter(admin_session::Column::AdminUserId.eq(admin.id))
+            .filter(admin_session::Column::RevokedAt.is_null())
+            .filter(admin_session::Column::Id.ne(sid))
+            .exec(db)
+            .await
+            .map_err(|e| ApiError::internal(e.to_string()))?;
+    }
+    let access = issue_jwt(
+        st,
+        admin.id,
+        role_str(admin.role.clone()),
+        "access",
+        Some(sid),
+        ACCESS_TTL,
+    )?;
     Ok((access, refresh))
 }
 
@@ -399,7 +419,7 @@ pub async fn refresh(State(st): State<AppState>, jar: axum_extra::extract::Cooki
     if admin.status == admin_user::Status::Locked {
         return ApiError::new(Code::Locked, "account locked").into_response();
     }
-    match issue_session(&st, db, &admin).await {
+    match issue_session(&st, db, &admin, false).await {
         Ok((access, new_refresh)) => session_response(&admin, access, new_refresh, None),
         Err(e) => e.into_response(),
     }
@@ -442,6 +462,12 @@ pub async fn me(State(st): State<AppState>, parts: axum::http::request::Parts) -
         Ok(d) => d,
         Err(e) => return e.into_response(),
     };
+    if let Some(sid) = claims.sid {
+        #[allow(clippy::collapsible_if)]
+        if let Err(e) = crate::state::session_valid(db, sid, claims.sub).await {
+            return e.into_response();
+        }
+    }
     match current_admin(db, claims.sub).await {
         Ok(admin) => ok(json!({"admin": admin_out(&admin)})),
         Err(e) => e.into_response(),

@@ -7,7 +7,10 @@ use axum::{
 use common::crypto::{self, FieldKey};
 use common::error::{ApiError, Code};
 use common::ratelimit::{Lockout, RateLimiter};
-use domain::entity::admin_user::{self, Status};
+use domain::entity::{
+    admin_session,
+    admin_user::{self, Status},
+};
 use ed25519_dalek::SigningKey;
 use sea_orm::{DatabaseConnection, EntityTrait};
 use serde::{Deserialize, Serialize};
@@ -76,6 +79,9 @@ pub struct Claims {
     pub role: String,
     /// "access" | "temp"
     pub kind: String,
+    /// session row id — present on access tokens only (single-session enforcement).
+    #[serde(default)]
+    pub sid: Option<Uuid>,
     pub iat: u64,
     pub exp: u64,
 }
@@ -87,11 +93,13 @@ pub fn role_str(r: admin_user::Role) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn issue_jwt(
     st: &AppState,
     sub: Uuid,
     role: &str,
     kind: &str,
+    sid: Option<Uuid>,
     ttl: Duration,
 ) -> Result<String, ApiError> {
     let now = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
@@ -99,6 +107,7 @@ pub fn issue_jwt(
         sub,
         role: role.to_string(),
         kind: kind.to_string(),
+        sid,
         iat: now,
         exp: now + ttl.as_secs(),
     };
@@ -108,6 +117,29 @@ pub fn issue_jwt(
         &st.jwt_enc,
     )
     .map_err(|e| ApiError::internal(e.to_string()))
+}
+
+/// Single-session enforcement: the session row behind an access token must still be live.
+/// A newer login revokes all prior sessions → this check makes them die immediately.
+pub async fn session_valid(
+    db: &DatabaseConnection,
+    sid: Uuid,
+    admin_id: Uuid,
+) -> Result<(), ApiError> {
+    let s = admin_session::Entity::find_by_id(sid)
+        .one(db)
+        .await
+        .map_err(ApiError::from)?;
+    match s {
+        Some(x)
+            if x.admin_user_id == admin_id
+                && x.revoked_at.is_none()
+                && x.expires_at > time::OffsetDateTime::now_utc() =>
+        {
+            Ok(())
+        }
+        _ => Err(ApiError::auth("session revoked — logged in elsewhere")),
+    }
 }
 
 pub fn decode_jwt(st: &AppState, token: &str, want_kind: &str) -> Result<Claims, ApiError> {
@@ -152,6 +184,9 @@ impl FromRequestParts<AppState> for AuthAdmin {
             cookie_value(parts, ACCESS_COOKIE).ok_or_else(|| ApiError::auth("no session"))?;
         let claims = decode_jwt(state, &token, "access")?;
         let db = state.db()?;
+        if let Some(sid) = claims.sid {
+            session_valid(db, sid, claims.sub).await?;
+        }
         let admin = admin_user::Entity::find_by_id(claims.sub)
             .one(db)
             .await
