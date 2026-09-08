@@ -1,5 +1,7 @@
-import { useState, type FormEvent } from 'react'
-import QRCode from 'qrcode'
+import { useState } from 'react'
+import { useForm } from '@tanstack/react-form'
+import { z } from 'zod'
+import { toast } from '@/components/ui/toast'
 import { login, verifyTotp, type Admin, type LoginResponse } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,11 +10,19 @@ import { Label } from '@/components/ui/label'
 
 type Step = 'credentials' | 'totp' | 'recovery'
 
+const credentialsSchema = z.object({
+  loginCode: z.string().min(1, 'Login code is required'),
+  password: z.string().min(1, 'Password is required'),
+})
+const totpSchema = z.string().length(6, 'Enter the 6-digit code from your authenticator')
+
+function formError(err: unknown): string {
+  if (err instanceof Error) return err.message
+  return 'Something went wrong, please try again'
+}
+
 export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void }) {
   const [step, setStep] = useState<Step>('credentials')
-  const [loginCode, setLoginCode] = useState('')
-  const [password, setPassword] = useState('')
-  const [totp, setTotp] = useState('')
   const [resp, setResp] = useState<LoginResponse | null>(null)
   const [qr, setQr] = useState('')
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
@@ -20,44 +30,68 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  async function submitCredentials(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    setBusy(true)
-    try {
-      const r = await login(loginCode, password)
-      setResp(r)
-      if (r.otpauth_url) {
-        setQr(await QRCode.toDataURL(r.otpauth_url))
+  const credentialsForm = useForm({
+    defaultValues: { loginCode: '', password: '' },
+    onSubmit: async ({ value }) => {
+      setError('')
+      const parsed = credentialsSchema.safeParse(value)
+      if (!parsed.success) {
+        const msg = parsed.error.issues[0].message
+        setError(msg)
+        toast.add({ title: 'Invalid input', description: msg, type: 'error' })
+        return
       }
-      setStep('totp')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed')
-    } finally {
-      setBusy(false)
-    }
-  }
+      setBusy(true)
+      try {
+        const r = await login(parsed.data.loginCode, parsed.data.password)
+        setResp(r)
+        if (r.otpauth_url) {
+          const QRCode = (await import('qrcode')).default
+          setQr(await QRCode.toDataURL(r.otpauth_url))
+        }
+        setStep('totp')
+      } catch (err) {
+        const msg = formError(err)
+        setError(msg)
+        toast.add({ title: 'Login failed', description: msg, type: 'error' })
+      } finally {
+        setBusy(false)
+      }
+    },
+  })
 
-  async function submitTotp(e: FormEvent) {
-    e.preventDefault()
-    if (!resp) return
-    setError('')
-    setBusy(true)
-    try {
-      const r = await verifyTotp(resp.temp_token, totp)
-      setAdmin(r.admin)
-      if (r.recovery_codes) {
-        setRecoveryCodes(r.recovery_codes)
-        setStep('recovery')
-      } else {
-        onLoggedIn(r.admin)
+  const totpForm = useForm({
+    defaultValues: { totp: '' },
+    onSubmit: async ({ value }) => {
+      setError('')
+      const msg = totpSchema.safeParse(value.totp).error?.issues[0]?.message
+      if (msg) {
+        setError(msg)
+        toast.add({ title: 'Invalid code', description: msg, type: 'error' })
+        return
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid code')
-    } finally {
-      setBusy(false)
-    }
-  }
+      if (!resp) return
+      setBusy(true)
+      try {
+        const r = await verifyTotp(resp.temp_token, value.totp)
+        setAdmin(r.admin)
+        if (r.recovery_codes) {
+          setRecoveryCodes(r.recovery_codes)
+          setStep('recovery')
+          toast.add({ title: 'TOTP enabled', description: 'Save your recovery codes.', type: 'success' })
+        } else {
+          toast.add({ title: 'Welcome back', description: 'You are signed in.', type: 'success' })
+          onLoggedIn(r.admin)
+        }
+      } catch (err) {
+        const m = formError(err)
+        setError(m)
+        toast.add({ title: 'Verification failed', description: m, type: 'error' })
+      } finally {
+        setBusy(false)
+      }
+    },
+  })
 
   if (step === 'recovery') {
     return (
@@ -80,7 +114,7 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
     )
   }
 
-  if (step === 'totp') {
+    if (step === 'totp') {
     const isFirst = !!resp?.otpauth_url
     return (
       <Card className="w-full max-w-md">
@@ -88,28 +122,32 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
           <CardTitle>{isFirst ? 'Scan the QR code' : 'Enter your TOTP code'}</CardTitle>
           <CardDescription>
             {isFirst
-              ? 'Scan with any authenticator app, then enter the code.'
-              : 'Enter the 6-digit code from your authenticator.'}
+              ? 'Scan with your authenticator app, then enter the 6-digit code below.'
+              : 'Enter the 6-digit code from your authenticator app.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {qr && <img src={qr} alt="TOTP QR" className="mx-auto rounded-md border" />}
-          <form onSubmit={submitTotp} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="totp">6-digit code</Label>
-              <Input
-                id="totp"
-                inputMode="numeric"
-                pattern="[0-9]{6}"
-                value={totp}
-                onChange={(e) => setTotp(e.target.value)}
-                placeholder="000000"
-                autoFocus
-              />
-            </div>
+          <form onSubmit={totpForm.handleSubmit} className="space-y-4">
+            <totpForm.Field name="totp">
+              {(field) => (
+                <>
+                  <Label htmlFor="totp" className="text-sm font-medium">6-digit code</Label>
+                  <Input
+                    id="totp"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    autoFocus
+                    className="h-12 text-base"
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                  />
+                </>
+              )}
+            </totpForm.Field>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full" disabled={busy || totp.length !== 6}>
-              Verify
+            <Button type="submit" className="w-full h-12 text-base" disabled={busy}>
+              {busy ? 'Verifying…' : 'Verify'}
             </Button>
           </form>
         </CardContent>
@@ -117,31 +155,48 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
     )
   }
 
-  return (
+    return (
     <Card className="w-full max-w-sm">
       <CardHeader>
-        <CardTitle>Sign in</CardTitle>
-        <CardDescription>Login code + password.</CardDescription>
+        <CardTitle>Sign in to Hostman Admin</CardTitle>
+        <CardDescription>
+          Login code and password are crypto-verified. Enter your credentials to continue.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <form onSubmit={submitCredentials} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="code">Login code</Label>
-            <Input
-              id="code"
-              value={loginCode}
-              onChange={(e) => setLoginCode(e.target.value)}
-              placeholder="32-character code"
-              autoFocus
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="pw">Password</Label>
-            <Input id="pw" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          </div>
+        <form onSubmit={credentialsForm.handleSubmit} className="space-y-4">
+          <credentialsForm.Field name="loginCode">
+            {(field) => (
+              <>
+                <Label htmlFor="code" className="text-sm font-medium">Login code</Label>
+                <Input
+                  id="code"
+                  placeholder="32-character code"
+                  autoFocus
+                  className="h-12 text-base"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                />
+              </>
+            )}
+          </credentialsForm.Field>
+          <credentialsForm.Field name="password">
+            {(field) => (
+              <>
+                <Label htmlFor="pw" className="text-sm font-medium">Password</Label>
+                <Input
+                  id="pw"
+                  type="password"
+                  className="h-12 text-base"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                />
+              </>
+            )}
+          </credentialsForm.Field>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" className="w-full" disabled={busy || !loginCode || !password}>
-            Continue
+          <Button type="submit" className="w-full h-12 text-base" disabled={busy}>
+            {busy ? 'Signing in…' : 'Continue'}
           </Button>
         </form>
       </CardContent>

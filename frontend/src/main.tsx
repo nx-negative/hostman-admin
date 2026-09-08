@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { routeTree } from './routeTree.gen'
 import { AuthProvider, useAuth } from '@/app/auth'
 import { ThemeProvider } from '@/app/theme'
+import { Toaster } from '@/components/ui/toast'
 import './index.css'
 
 const router = createRouter({ routeTree })
@@ -28,6 +29,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
+        <Toaster />
         <AuthProvider>
           <Inner />
         </AuthProvider>

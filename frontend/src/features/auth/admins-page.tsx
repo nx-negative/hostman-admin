@@ -1,12 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
+import { useForm } from '@tanstack/react-form'
+import { z } from 'zod'
+import { toast } from '@/components/ui/toast'
 import { useAuth } from '@/app/auth'
-import {
-  createAdmin,
-  deleteAdmin,
-  listAdmins,
-  type Admin,
-  type CreatedAdmin,
-} from '@/lib/auth'
+import { createAdmin, deleteAdmin, listAdmins, type Admin, type CreatedAdmin } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -31,10 +28,36 @@ export function AdminsPage() {
   const { admin } = useAuth()
   const [admins, setAdmins] = useState<Admin[]>([])
   const [loading, setLoading] = useState(false)
-  const [role, setRole] = useState('admin')
-  const [created, setCreated] = useState<CreatedAdmin | null>(null)
-  const [open, setOpen] = useState(false)
+    const [created, setCreated] = useState<CreatedAdmin | null>(null)
+    const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
+
+  const createAdminSchema = z.object({
+    role: z.enum(['admin', 'mother_admin']),
+  })
+  const roleForm = useForm({
+    defaultValues: { role: 'admin' },
+    onSubmit: async ({ value }) => {
+      setError('')
+      const parsed = createAdminSchema.safeParse(value)
+      if (!parsed.success) {
+        const msg = parsed.error.issues[0].message
+        setError(msg)
+        toast.add({ title: 'Invalid role', description: msg, type: 'error' })
+        return
+      }
+      try {
+        const a = await createAdmin(parsed.data.role)
+        setCreated(a)
+        toast.add({ title: 'Admin created', description: 'Credentials generated — copy them now.', type: 'success' })
+        await load()
+      } catch (err) {
+        const m = err instanceof Error ? err.message : 'Failed to create admin'
+        setError(m)
+        toast.add({ title: 'Failed', description: m, type: 'error' })
+      }
+    },
+  })
 
   async function load() {
     setLoading(true)
@@ -42,18 +65,6 @@ export function AdminsPage() {
       setAdmins(await listAdmins())
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function submit(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    try {
-      const a = await createAdmin(role)
-      setCreated(a)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed')
     }
   }
 
@@ -78,7 +89,7 @@ export function AdminsPage() {
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger
             className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-            onClick={() => { setCreated(null); setRole('admin') }}
+            onClick={() => { setCreated(null); roleForm.reset({ role: 'admin' }) }}
           >
             Add admin
           </DialogTrigger>
@@ -105,22 +116,26 @@ export function AdminsPage() {
                   Done
                 </Button>
               </div>
-            ) : (
-              <form onSubmit={submit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="role">Role</Label>
-                  <select
-                    id="role"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3"
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                  >
-                    <option value="admin">admin</option>
-                    <option value="mother_admin">mother_admin</option>
-                  </select>
-                </div>
+                        ) : (
+              <form onSubmit={roleForm.handleSubmit} className="space-y-4">
+                <roleForm.Field name="role">
+                  {(field) => (
+                    <>
+                      <Label htmlFor="role" className="text-sm font-medium">Role</Label>
+                      <select
+                        id="role"
+                        className="flex h-12 w-full rounded-md border border-input bg-background px-3 text-base"
+                        value={field.state.value}
+                        onChange={(e) => field.handleChange(e.target.value as 'admin' | 'mother_admin')}
+                      >
+                        <option value="admin">admin</option>
+                        <option value="mother_admin">mother_admin</option>
+                      </select>
+                    </>
+                  )}
+                </roleForm.Field>
                 {error && <p className="text-sm text-destructive">{error}</p>}
-                <Button type="submit" className="w-full">
+                <Button type="submit" className="w-full h-12 text-base">
                   Create
                 </Button>
               </form>
