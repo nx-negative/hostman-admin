@@ -1,5 +1,5 @@
 # HOSTMAN-ADMIN — version ledger
-updated: 2026-09-08 · phase: 0/10 · status: awaiting-approval
+updated: 2026-09-08 · phase: 1/10 · status: planning (P0 approved + pushed)
 
 ## Completed
 - P0 scaffold: cargo workspace `backend/crates/{admin-api,domain,common,sync-worker}` — axum 0.8 `/healthz`+`/readyz` (Neon ping, degraded-start), Appendix-A error envelope (`common/error.rs`), JSON tracing, config/dotenv, SeaORM 2.0 + migrator (`domain`), initial `settings` migration, `admin-api setup` (migrations), router tests. Frontend: Vite 8 (Rolldown) + React 19 + TS strict, shadcn preset `b1D0dv72` (base-mira — tokens verified against registry item), TanStack Query/Router/Form/Table/Virtual + zod 4 + Framer Motion, app shell (sidebar+topbar, light/dark, flat), 9 stub routes (`src/routes/_app.*`), Dashboard live `/readyz` badge (15s poll). CI (`.github/workflows/ci.yml`), docs skeletons, `.env.example`, `version.md`.
