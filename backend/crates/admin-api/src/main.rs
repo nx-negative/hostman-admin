@@ -9,7 +9,7 @@ use common::crypto::{
     encrypt_field, ensure_root_key, gen_field_key_b64, gen_login_code, gen_recovery_code,
     hash_secret, normalize_code, valid_code,
 };
-use domain::entity::admin_user;
+use domain::entity::{admin_user, recovery_code};
 use domain::migration::{Migrator, MigratorTrait};
 use sea_orm::{Database, DatabaseConnection, EntityTrait, PaginatorTrait, Set};
 use std::net::SocketAddr;
@@ -20,8 +20,55 @@ async fn main() -> anyhow::Result<()> {
     let cfg = Settings::load()?;
     match std::env::args().nth(1).as_deref() {
         Some("setup") => setup(cfg).await,
+        Some("reset-totp") => reset_totp(&cfg).await,
         _ => serve(cfg).await,
     }
+}
+
+/// Clears the mother admin's TOTP so the first-login QR flow can be re-run (dev only).
+async fn reset_totp(cfg: &Settings) -> anyhow::Result<()> {
+    use domain::entity::admin_user::{self, Column, Entity, Role, Status};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, QueryFilter};
+    let db = connect(cfg).await?;
+    let mother = Entity::find()
+        .filter(Column::Role.eq(Role::MotherAdmin))
+        .one(&db)
+        .await?;
+    let Some(admin) = mother else {
+        println!("no mother_admin found");
+        return Ok(());
+    };
+    let mut am: admin_user::ActiveModel = admin.into();
+    am.totp_enabled = Set(false);
+    am.totp_secret = Set(None);
+    am.status = Set(Status::Active);
+    let updated = am.update(&db).await?;
+    // burn existing recovery codes so fresh ones are issued
+    let _ = recovery_code::Entity::delete_many()
+        .filter(recovery_code::Column::AdminUserId.eq(updated.id))
+        .exec(&db)
+        .await;
+    lockouts_reset(&db).await.ok();
+    println!(
+        "TOTP reset for mother_admin {} — next login will show QR",
+        updated.login_code_prefix
+    );
+    Ok(())
+}
+
+async fn lockouts_reset(db: &sea_orm::DatabaseConnection) -> anyhow::Result<()> {
+    use domain::entity::admin_user::{self, Column, Entity, Role};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, QueryFilter};
+    let mother = Entity::find()
+        .filter(Column::Role.eq(Role::MotherAdmin))
+        .one(db)
+        .await?;
+    if let Some(a) = mother {
+        let mut am: admin_user::ActiveModel = a.into();
+        am.status = Set(domain::entity::admin_user::Status::Active);
+        am.update(db).await?;
+    }
+    Ok(())
 }
 
 async fn connect(cfg: &Settings) -> anyhow::Result<DatabaseConnection> {

@@ -19,7 +19,8 @@ updated: 2026-09-08 · phase: 1/10 · status: awaiting-approval
 - 2026-09-08 — new admins get system-generated login_code + one-time password shown once in modal (mirrors reseller flow in P3).
 
 ## Handoff notes for next agent
-- Mother admin credentials printed by `setup` (shown once) — for local dev: code `28RBVVVQGDB5A766RPDAQBJ6D8VTFBM0`, pw `Y9YAX-QATE8` (this Neon DB). TOTP secret `TULEFH36HQUJ2QCWS327N6FI6IHEHEGW`.
+- Mother admin credentials printed by `setup` (shown once) — for local dev: code `28RBVVVQGDB5A766RPDAQBJ6D8VTFBM0`, pw `Y9YAX-QATE8` (this Neon DB). TOTP was reset (`cargo run -p admin-api -- reset-totp`) so first login shows a fresh QR — new secret `62L3TUKAODKTUYEZQUSERYGOHJU3OXI5`.
+- `admin-api reset-totp` clears mother admin TOTP (dev utility) so the QR enrollment flow can be re-run.
 - `FIELD_ENC_KEY` now set in `.env` (gitignored); root key at `backend/keys/root.ed25519` (gitignored).
 - Frontend: `bunx vite build` regenerates `src/routeTree.gen.ts` (TanStack router plugin) — run it after adding routes, before `tsc`.
 - shadcn `@base-ui` DialogTrigger has NO `asChild` — apply button classes directly.
