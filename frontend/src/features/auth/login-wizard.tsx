@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import QRCode from 'qrcode'
-import { login, verifyTotp, type LoginResponse } from '@/lib/auth'
+import { login, verifyTotp, type Admin, type LoginResponse } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 
 type Step = 'credentials' | 'totp' | 'recovery'
 
-export function LoginWizard({ onLoggedIn }: { onLoggedIn: (isFirst: boolean) => void }) {
+export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void }) {
   const [step, setStep] = useState<Step>('credentials')
   const [loginCode, setLoginCode] = useState('')
   const [password, setPassword] = useState('')
@@ -16,6 +16,7 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (isFirst: boolean) => 
   const [resp, setResp] = useState<LoginResponse | null>(null)
   const [qr, setQr] = useState('')
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
+  const [admin, setAdmin] = useState<Admin | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -44,11 +45,12 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (isFirst: boolean) => 
     setBusy(true)
     try {
       const r = await verifyTotp(resp.temp_token, totp)
+      setAdmin(r.admin)
       if (r.recovery_codes) {
         setRecoveryCodes(r.recovery_codes)
         setStep('recovery')
       } else {
-        onLoggedIn(false)
+        onLoggedIn(r.admin)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid code')
@@ -70,7 +72,7 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (isFirst: boolean) => 
               <span key={c}>{c}</span>
             ))}
           </div>
-          <Button className="w-full" onClick={() => onLoggedIn(true)}>
+          <Button className="w-full" onClick={() => admin && onLoggedIn(admin)}>
             I've saved them — continue
           </Button>
         </CardContent>

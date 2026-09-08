@@ -18,6 +18,13 @@ export interface VerifyResponse {
   recovery_codes: string[] | null
 }
 
+const SESSION_MARK = 'hm_session'
+
+/** Per-tab marker: survives reload, dies with the tab/browser (§7.4 session-scoped). */
+export const markSession = () => sessionStorage.setItem(SESSION_MARK, '1')
+export const clearSessionMark = () => sessionStorage.removeItem(SESSION_MARK)
+export const hasSessionMark = () => sessionStorage.getItem(SESSION_MARK) === '1'
+
 export async function login(loginCode: string, password: string): Promise<LoginResponse> {
   return api('/auth/login', {
     method: 'POST',

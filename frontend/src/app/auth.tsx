@@ -1,5 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { fetchMe, logout as logoutApi, type Admin } from '../lib/auth'
+import {
+  clearSessionMark,
+  fetchMe,
+  hasSessionMark,
+  logout as logoutApi,
+  markSession,
+  type Admin,
+} from '../lib/auth'
 
 interface AuthState {
   admin: Admin | null
@@ -15,6 +22,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [admin, setAdmin] = useState<Admin | null>(null)
   const [loading, setLoading] = useState(true)
 
+  useEffect(() => {
+    const check = async () => {
+      if (!hasSessionMark()) {
+        // tab was closed/reopened (marker gone) but cookies may persist →
+        // revoke the session so the token is removed, then require re-login.
+        await logoutApi().catch(() => {})
+        setAdmin(null)
+        setLoading(false)
+        return
+      }
+      try {
+        setAdmin(await fetchMe())
+      } catch {
+        setAdmin(null)
+      } finally {
+        setLoading(false)
+      }
+    }
+    check()
+  }, [])
+
   const refresh = async () => {
     try {
       setAdmin(await fetchMe())
@@ -25,13 +53,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  useEffect(() => {
-    refresh()
-  }, [])
-
-  const login = (a: Admin) => setAdmin(a)
+  const login = (a: Admin) => {
+    markSession()
+    setAdmin(a)
+  }
 
   const logout = async () => {
+    clearSessionMark()
     await logoutApi().catch(() => {})
     setAdmin(null)
   }
