@@ -117,6 +117,34 @@ pub async fn login(
     )
     .await;
 
+    // §7.4 single-session: refuse a *new* login while this admin still has a live
+    // (unrevoked, unexpired) session. The existing tab keeps working; the new login
+    // is rejected with 409 instead of evicting it. (If the access token merely
+    // expired, the frontend revokes on its 401 before re-login, so this never
+    // blocks a legitimate single-user re-login.)
+    let active = admin_session::Entity::find()
+        .filter(admin_session::Column::AdminUserId.eq(admin.id))
+        .filter(admin_session::Column::RevokedAt.is_null())
+        .filter(admin_session::Column::ExpiresAt.gt(time::OffsetDateTime::now_utc()))
+        .one(db)
+        .await;
+    if matches!(active, Ok(Some(_))) {
+        audit::write(
+            db,
+            Some(admin.id),
+            "auth.login_blocked_active_session",
+            None,
+            None,
+            json!({"ip": ip}),
+            Some(ip.clone()),
+        )
+        .await;
+        return ApiError::conflict(
+            "a session is already active for this account; log out from the other tab first",
+        )
+        .into_response();
+    }
+
     if admin.totp_enabled {
         match issue_jwt(
             &st,

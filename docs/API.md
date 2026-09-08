@@ -22,7 +22,7 @@ All auth routes are under `/api/v1`. Session = httpOnly cookie `hm_access` (15 m
 ### `POST /auth/login` — admin-session | JSON `{login_code, password}`
 - 200 `{"state":"totp_enroll","temp_token":"...","otpauth_url":"otpauth://..."}` — first login, scan QR
 - 200 `{"state":"totp_required","temp_token":"..."}` — returning user
-- 400 `VALIDATION` · 401 `AUTH` · 423 `LOCKED` · 429 `RATE_LIMIT`
+- 400 `VALIDATION` · 401 `AUTH` · 423 `LOCKED` · **409 `CONFLICT`** if a live session already exists for this account (single-session, §7.4: log out the other tab first) · 429 `RATE_LIMIT`
 - Rate: 5/min per IP. Lockout: 5 fails → 15 min.
 
 ### `POST /auth/totp/verify` — public | JSON `{temp_token, code}`
