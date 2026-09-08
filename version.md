@@ -16,7 +16,7 @@ updated: 2026-09-08 · phase: 0/10 · status: awaiting-approval
 - 2026-09-08 — sync-worker crate = stub — §6 says admin applies sync directly; crate kept for P5 tooling.
 
 ## Handoff notes for next agent
-- No `DATABASE_URL` in `.env` yet — human must supply Neon pooled URL; until then readyz = 503 (by design).
+- `DATABASE_URL` (Neon pooled) is set in `.env` (gitignored); migrations applied to cloud, readyz = 200 db ok (verified live).
 - `frontend/src/routeTree.gen.ts` is generated and COMMITTED — `bunx tsc --noEmit` alone doesn't run the Vite plugin.
 - Frontend dev proxies `/api` → `127.0.0.1:8080`; no CORS needed in dev.
 - Build order frontend: `bunx vite build` regenerates routeTree before tsc if routes changed.
