@@ -92,6 +92,12 @@ impl From<anyhow::Error> for ApiError {
     }
 }
 
+impl From<sea_orm::DbErr> for ApiError {
+    fn from(e: sea_orm::DbErr) -> Self {
+        Self::internal(e.to_string())
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (

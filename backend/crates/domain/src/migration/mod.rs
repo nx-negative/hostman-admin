@@ -1,3 +1,4 @@
+mod admin_auth;
 mod initial;
 
 use sea_orm_migration::prelude::*;
@@ -7,7 +8,10 @@ pub struct Migrator;
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        vec![Box::new(initial::Migration)]
+        vec![
+            Box::new(initial::Migration),
+            Box::new(admin_auth::Migration),
+        ]
     }
 }
 

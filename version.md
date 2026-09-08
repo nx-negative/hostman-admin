@@ -1,26 +1,30 @@
 # HOSTMAN-ADMIN — version ledger
-updated: 2026-09-08 · phase: 1/10 · status: planning (P0 approved + pushed)
+updated: 2026-09-08 · phase: 1/10 · status: awaiting-approval
 
 ## Completed
-- P0 scaffold: cargo workspace `backend/crates/{admin-api,domain,common,sync-worker}` — axum 0.8 `/healthz`+`/readyz` (Neon ping, degraded-start), Appendix-A error envelope (`common/error.rs`), JSON tracing, config/dotenv, SeaORM 2.0 + migrator (`domain`), initial `settings` migration, `admin-api setup` (migrations), router tests. Frontend: Vite 8 (Rolldown) + React 19 + TS strict, shadcn preset `b1D0dv72` (base-mira — tokens verified against registry item), TanStack Query/Router/Form/Table/Virtual + zod 4 + Framer Motion, app shell (sidebar+topbar, light/dark, flat), 9 stub routes (`src/routes/_app.*`), Dashboard live `/readyz` badge (15s poll). CI (`.github/workflows/ci.yml`), docs skeletons, `.env.example`, `version.md`.
+- P0 scaffold: backend workspace (axum/SeaORM/health), frontend shell (Vite+shadcn b1D0dv72+TanStack), CI, docs.
+- P1 admin auth: argon2id + TOTP (totp-rs 6 Builder) + EdDSA session JWT (root Ed25519 key, `aws_lc_rs` provider); admin_users/admin_sessions/recovery_codes/audit_log (SeaORM 2.0 + PG enums); rotating refresh 7d + access 15min httpOnly session cookies; lockout 5/15 + rate 5/min login, 120/min general; mother_admin-only admin mgmt (create=list+one-time creds, delete, cannot remove self/mother); setup bootstraps mother admin + auto-gens FIELD_ENC_KEY + root key. Frontend: login wizard (credentials→QR→TOTP→recovery codes), AuthProvider, shell logout + user badge + conditional Admins nav, admins page. Live-verified on Neon.
 
 ## Current phase
-- P0 done — awaiting human browser test + approval. / left: nothing in P0 scope.
+- P1 done — awaiting human browser test + approval. / left: nothing in P1 scope.
 
 ## Decisions log (1 line each)
-- 2026-09-08 — dotenvy instead of unmaintained `dotenv` crate — same `.env` behavior, maintained.
-- 2026-09-08 — sea-orm 2.0.2 (latest); `MigratorTrait` re-exported from `domain::migration` — trait moved in 2.0.
-- 2026-09-08 — `/readyz` degraded returns HTTP 503 (UPSTREAM envelope) — health probes expect 503; Appendix A has no 503 code, UPSTREAM chosen.
-- 2026-09-08 — CORS permissive in dev — locked down with security headers in P8 (spec).
-- 2026-09-08 — TypeScript 7 (native): `baseUrl` removed, `paths` relative — new toolchain default.
-- 2026-09-08 — sync-worker crate = stub — §6 says admin applies sync directly; crate kept for P5 tooling.
+- 2026-09-08 — jsonwebtoken 11 requires explicit CryptoProvider → enabled `aws_lc_rs` feature (common + admin-api).
+- 2026-09-08 — sea-orm-migration 2.0 `enumeration()` only sets column type; PG enum types created explicitly via `CREATE TYPE ... AS ENUM` in migration up.
+- 2026-09-08 — ed25519-dalek 3.0: `to_pkcs8_pem` needs `pem` feature; `Signature::from_bytes` infallible; `Verifier` trait must be in scope for `verify`.
+- 2026-09-08 — totp-rs 6: `TOTP::new` deprecated → `Builder::new().with_*().build()`; `check_current` returns `Option<u64>` (`.is_some()`); `get_url`→`to_url`, 0 args.
+- 2026-09-08 — argon2 0.6 / password-hash 0.6: `hash_password(password)` auto-generates salt (no SaltString); `verify_password(password, hash)`.
+- 2026-09-08 — rand 0.10: `fill`/`random_range` via `RngExt` trait (must import).
+- 2026-09-08 — auth guard done component-level (window.location redirect) not router-context beforeLoad (context typing didn't flow).
+- 2026-09-08 — new admins get system-generated login_code + one-time password shown once in modal (mirrors reseller flow in P3).
 
 ## Handoff notes for next agent
-- `DATABASE_URL` (Neon pooled) is set in `.env` (gitignored); migrations applied to cloud, readyz = 200 db ok (verified live).
-- `frontend/src/routeTree.gen.ts` is generated and COMMITTED — `bunx tsc --noEmit` alone doesn't run the Vite plugin.
-- Frontend dev proxies `/api` → `127.0.0.1:8080`; no CORS needed in dev.
-- Build order frontend: `bunx vite build` regenerates routeTree before tsc if routes changed.
-- shadcn init: `--preset b1D0dv72 --pointer -y` (no `--base-color` flag on current CLI).
+- Mother admin credentials printed by `setup` (shown once) — for local dev: code `28RBVVVQGDB5A766RPDAQBJ6D8VTFBM0`, pw `Y9YAX-QATE8` (this Neon DB). TOTP secret `TULEFH36HQUJ2QCWS327N6FI6IHEHEGW`.
+- `FIELD_ENC_KEY` now set in `.env` (gitignored); root key at `backend/keys/root.ed25519` (gitignored).
+- Frontend: `bunx vite build` regenerates `src/routeTree.gen.ts` (TanStack router plugin) — run it after adding routes, before `tsc`.
+- shadcn `@base-ui` DialogTrigger has NO `asChild` — apply button classes directly.
+- Build is slow (~1-2 min) due to aws-lc-sys C compile from jsonwebtoken's `aws_lc_rs`.
 
 ## Exit gate reminder
 - §0 contract applies. Do not start next phase without approval.
+

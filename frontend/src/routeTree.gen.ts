@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as AppAdminsRouteImport } from './routes/_app.admins'
 import { Route as AppAuditRouteImport } from './routes/_app.audit'
 import { Route as AppDirectUsersRouteImport } from './routes/_app.direct-users'
 import { Route as AppNodesRouteImport } from './routes/_app.nodes'
@@ -32,6 +33,11 @@ const LoginRoute = LoginRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminsRoute = AppAdminsRouteImport.update({
+  id: '/admins',
+  path: '/admins',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAuditRoute = AppAuditRouteImport.update({
@@ -73,6 +79,7 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
+  '/admins': typeof AppAdminsRoute
   '/audit': typeof AppAuditRoute
   '/direct-users': typeof AppDirectUsersRoute
   '/nodes': typeof AppNodesRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/admins': typeof AppAdminsRoute
   '/audit': typeof AppAuditRoute
   '/direct-users': typeof AppDirectUsersRoute
   '/nodes': typeof AppNodesRoute
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/_app/admins': typeof AppAdminsRoute
   '/_app/audit': typeof AppAuditRoute
   '/_app/direct-users': typeof AppDirectUsersRoute
   '/_app/nodes': typeof AppNodesRoute
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/admins'
     | '/audit'
     | '/direct-users'
     | '/nodes'
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/admins'
     | '/audit'
     | '/direct-users'
     | '/nodes'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/login'
+    | '/_app/admins'
     | '/_app/audit'
     | '/_app/direct-users'
     | '/_app/nodes'
@@ -168,6 +180,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admins': {
+      id: '/_app/admins'
+      path: '/admins'
+      fullPath: '/admins'
+      preLoaderRoute: typeof AppAdminsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/audit': {
@@ -223,6 +242,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppAdminsRoute: typeof AppAdminsRoute
   AppAuditRoute: typeof AppAuditRoute
   AppDirectUsersRoute: typeof AppDirectUsersRoute
   AppNodesRoute: typeof AppNodesRoute
@@ -234,6 +254,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminsRoute: AppAdminsRoute,
   AppAuditRoute: AppAuditRoute,
   AppDirectUsersRoute: AppDirectUsersRoute,
   AppNodesRoute: AppNodesRoute,

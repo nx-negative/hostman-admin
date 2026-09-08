@@ -3,5 +3,6 @@ dist/
 .env
 backend/target/
 backend/keys/
+**/keys/
 *.log
 .DS_Store

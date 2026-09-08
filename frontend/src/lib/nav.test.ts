@@ -11,6 +11,7 @@ describe('nav', () => {
       'Services',
       'Notifications',
       'Audit',
+      'Admins',
       'Settings',
     ])
   })

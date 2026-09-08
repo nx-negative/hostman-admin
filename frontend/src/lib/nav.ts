@@ -1,4 +1,4 @@
-import { Activity, Bell, Radio, ScrollText, Server, Settings, ShieldCheck, Users } from 'lucide-react'
+import { Activity, Bell, Radio, ScrollText, Server, Settings, ShieldCheck, Users, UsersRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export interface NavItem {
@@ -15,5 +15,6 @@ export const nav: NavItem[] = [
   { to: '/services', label: 'Services', icon: ShieldCheck },
   { to: '/notifications', label: 'Notifications', icon: Bell },
   { to: '/audit', label: 'Audit', icon: ScrollText },
+  { to: '/admins', label: 'Admins', icon: UsersRound },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
