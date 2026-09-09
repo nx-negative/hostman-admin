@@ -117,7 +117,7 @@ export function AdminsPage() {
                 </Button>
               </div>
                         ) : (
-              <form onSubmit={roleForm.handleSubmit} className="space-y-4">
+              <form onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); roleForm.handleSubmit() }} className="space-y-4">
                 <roleForm.Field name="role">
                   {(field) => (
                     <>

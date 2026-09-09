@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useForm } from '@tanstack/react-form'
 import { z } from 'zod'
 import { toast } from '@/components/ui/toast'
-import { login, verifyTotp, type Admin, type LoginResponse } from '@/lib/auth'
+import { login, markSession, verifyTotp, type Admin, type LoginResponse } from '@/lib/auth'
+import { ApiError } from '@/lib/envelope'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -19,6 +20,17 @@ const totpSchema = z.string().length(6, 'Enter the 6-digit code from your authen
 function formError(err: unknown): string {
   if (err instanceof Error) return err.message
   return 'Something went wrong, please try again'
+}
+
+/** Single-session (§7.4) conflict vs. general login/TOTP failure. */
+function describeError(err: unknown): { title?: string; description: string } {
+  if (err instanceof ApiError && err.code === 'CONFLICT') {
+    return {
+      title: 'Session already active',
+      description: err.message,
+    }
+  }
+  return { title: undefined, description: formError(err) }
 }
 
 export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void }) {
@@ -44,6 +56,7 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
       setBusy(true)
       try {
         const r = await login(parsed.data.loginCode, parsed.data.password)
+        markSession()
         setResp(r)
         if (r.otpauth_url) {
           const QRCode = (await import('qrcode')).default
@@ -51,9 +64,9 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
         }
         setStep('totp')
       } catch (err) {
-        const msg = formError(err)
-        setError(msg)
-        toast.add({ title: 'Login failed', description: msg, type: 'error' })
+        const { title, description } = describeError(err)
+        setError(description)
+        toast.add({ title: title ?? 'Login failed', description })
       } finally {
         setBusy(false)
       }
@@ -84,9 +97,9 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
           onLoggedIn(r.admin)
         }
       } catch (err) {
-        const m = formError(err)
-        setError(m)
-        toast.add({ title: 'Verification failed', description: m, type: 'error' })
+        const { title, description } = describeError(err)
+        setError(description)
+        toast.add({ title: title ?? 'Verification failed', description })
       } finally {
         setBusy(false)
       }
@@ -128,7 +141,7 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
         </CardHeader>
         <CardContent className="space-y-4">
           {qr && <img src={qr} alt="TOTP QR" className="mx-auto rounded-md border" />}
-          <form onSubmit={totpForm.handleSubmit} className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); totpForm.handleSubmit() }} className="space-y-4">
             <totpForm.Field name="totp">
               {(field) => (
                 <>
@@ -138,7 +151,7 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
                     inputMode="numeric"
                     pattern="[0-9]{6}"
                     autoFocus
-                    className="h-12 text-base"
+                    className="h-10 text-base"
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                   />
@@ -146,7 +159,7 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
               )}
             </totpForm.Field>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full h-12 text-base" disabled={busy}>
+            <Button type="submit" className="w-full h-10 text-base" disabled={busy}>
               {busy ? 'Verifying…' : 'Verify'}
             </Button>
           </form>
@@ -164,7 +177,7 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <form onSubmit={credentialsForm.handleSubmit} className="space-y-4">
+        <form onSubmit={(e) => { e.preventDefault(); credentialsForm.handleSubmit() }} className="space-y-4">
           <credentialsForm.Field name="loginCode">
             {(field) => (
               <>
@@ -173,7 +186,7 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
                   id="code"
                   placeholder="32-character code"
                   autoFocus
-                  className="h-12 text-base"
+                  className="h-8 text-base"
                   value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
@@ -187,7 +200,7 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
                 <Input
                   id="pw"
                   type="password"
-                  className="h-12 text-base"
+                  className="h-8 text-base"
                   value={field.state.value}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
@@ -195,7 +208,7 @@ export function LoginWizard({ onLoggedIn }: { onLoggedIn: (admin: Admin) => void
             )}
           </credentialsForm.Field>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" className="w-full h-12 text-base" disabled={busy}>
+          <Button type="submit" className="w-full h-8 text-sm" disabled={busy}>
             {busy ? 'Signing in…' : 'Continue'}
           </Button>
         </form>
